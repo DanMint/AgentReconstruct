@@ -11,7 +11,8 @@ class Agent:
         self.model = ChatOllama(
             model = self.model,
             tempeture = self.tempeture,
-            # base_url = "http://127.0.0.1:9000"
+            # this is the url of where the FastAPI is running
+            base_url = "http://127.0.0.1:9000"
         )
 
         self.agent = create_agent(
