@@ -6,7 +6,6 @@ app = FastAPI()
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 
-
 @app.post("/api/chat")
 async def ollama_chat(request: Request):
     # recieved data from host agent or llm
