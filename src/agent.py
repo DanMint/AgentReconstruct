@@ -1,35 +1,51 @@
 from langchain.agents import create_agent
-from langchain.tools import tool
 from langchain_ollama import ChatOllama
 import uuid
 
+
 class Agent:
-    def __init__(self, model_name:str = "minicpm-v4.5:latest", temp:int = 0, agent_prompt:str = "You are a helpful assistant") -> None:
-        self.model = model_name
-        self.tempeture = temp
-        self.system_prompt = agent_prompt
-        self.trace_id = str(uuid.uuid4())
-        
+
+    def __init__(self, tools=None, trace_id: str | None = None, model_name: str = "minicpm-v4.5:latest", temp: float = 0, agent_prompt: str = "You are a helpful assistant") -> None:
+        # Trace ID
+        if trace_id is None:
+            self.trace_id = str(uuid.uuid4())
+        else:
+            self.trace_id = trace_id
+
+        # LLM
         self.model = ChatOllama(
-            model = self.model,
-            tempeture = self.tempeture,
-            # this is the url of where the FastAPI is running
-            base_url = "http://127.0.0.1:9000",
+            model=model_name,
+
+            # Notice spelling:
+            temperature=temp,
+
+            # ALL LLM traffic goes through LLM Gateway
+            base_url="http://127.0.0.1:9000",
+
             client_kwargs={
                 "headers": {
                     "X-Trace-ID": self.trace_id
-                },
-            }
+                }
+            },
         )
 
+
+        # Tools
+        if tools is None:
+            tools = []
+
+        self.tools = tools
+
+        # LangChain Agent
         self.agent = create_agent(
-            model = self.model,
-            tools = [],
-            system_prompt = self.system_prompt,
+            model=self.model,
+            tools=self.tools,
+            system_prompt=agent_prompt,
         )
 
-    def invoke(self, role: str = "user",messages: str = "") -> dict:
-        return self.agent.invoke(
+
+    async def invoke(self, role: str = "user", messages: str = "") -> dict:
+        return await self.agent.ainvoke(
             {
                 "messages": [
                     {
@@ -40,15 +56,7 @@ class Agent:
             }
         )
 
+
     @property
     def getAgent(self):
         return self.agent
-
-def main():
-    agent = Agent(agent_prompt="")
-    result = agent.invoke(messages = "What it do lil boo?")
-
-    print(result)
-
-if __name__ == "__main__":
-    main()
