@@ -19,7 +19,7 @@ async def ollama_chat(request: Request):
     print(body)
 
     # Make Ollama return ONE complete JSON response
-    body["stream"] = False
+    body["stream"] = True
 
     # switch roles from server to client
     # httpx.AsyncClient(timeout=120) -> creates an async HTTP client
