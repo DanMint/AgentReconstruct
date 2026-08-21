@@ -100,7 +100,7 @@ class Agent:
         # TRACE_START
         #
         # Lifecycle marker indicating that the Agent Host
-        # has begun processing this execution.
+        # has begun processing this execution
         # ----------------------------------------------------
 
         await self._record_host_event(
