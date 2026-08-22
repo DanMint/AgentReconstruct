@@ -9,9 +9,10 @@ class ReconstructionEngine:
 
     def __init__(self, db_path: Optional[str] = None):
 
+        self.project_root = Path(__file__).resolve().parent.parent
+
         if db_path is None:
-            project_root = Path(__file__).resolve().parent.parent
-            self.db_path = project_root / "data" / "events.db"
+            self.db_path = self.project_root / "data" / "events.db"
         else:
             self.db_path = Path(db_path)
 
@@ -21,7 +22,7 @@ class ReconstructionEngine:
 
     def load_trace(self, trace_id: str) -> list[dict]:
         """
-        Load all events associated with a trace ID.
+        Load a complete trace from SQLite.
         """
 
         cursor = self.db.execute(
@@ -56,10 +57,36 @@ class ReconstructionEngine:
         return events
 
 
+    def load_json(self, json_path: str | Path) -> list[dict]:
+        """
+        Load an ablated trace from JSON.
+        """
+
+        json_path = Path(json_path)
+
+        if not json_path.exists():
+            raise FileNotFoundError(
+                f"JSON file not found: {json_path}"
+            )
+
+        with open(
+            json_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            events = json.load(file)
+
+        if not isinstance(events, list):
+            raise ValueError(
+                "Ablated JSON must contain a list of events."
+            )
+
+        return events
+
+
     def calculate_hash(self, event: dict) -> str:
         """
-        Recalculate the hash of an event using the same
-        method as the Event Recorder.
+        Recalculate the hash of an original database event.
         """
 
         data = {
@@ -84,11 +111,10 @@ class ReconstructionEngine:
         ).hexdigest()
 
 
-    def get_previous_global_hash(self, event_id: int) -> Optional[str]:
-        """
-        Get the hash of the event immediately before this
-        event in the global Recorder chain.
-        """
+    def get_previous_global_hash(
+        self,
+        event_id: int
+    ) -> Optional[str]:
 
         cursor = self.db.execute(
             """
@@ -111,7 +137,10 @@ class ReconstructionEngine:
 
     def verify_integrity(self, events: list[dict]) -> dict:
         """
-        Verify each event hash and previous hash.
+        Verify the original trusted database trace.
+
+        Ablated traces are intentionally modified and
+        should not be integrity checked.
         """
 
         failures = []
@@ -146,9 +175,12 @@ class ReconstructionEngine:
         }
 
 
-    def extract_execution(self, events: list[dict]) -> list[dict]:
+    def extract_execution(
+        self,
+        events: list[dict]
+    ) -> list[dict]:
         """
-        Extract events between TRACE_START and TRACE_END.
+        Extract TRACE_START through TRACE_END.
         """
 
         start_index = None
@@ -156,40 +188,43 @@ class ReconstructionEngine:
 
         for index, event in enumerate(events):
 
-            if event["event_type"] == "TRACE_START":
+            if event.get("event_type") == "TRACE_START":
                 start_index = index
                 break
 
         if start_index is None:
-            raise ValueError("TRACE_START was not found.")
+            raise ValueError(
+                "TRACE_START was not found."
+            )
 
         for index in range(start_index, len(events)):
 
-            if events[index]["event_type"] == "TRACE_END":
+            if events[index].get("event_type") == "TRACE_END":
                 end_index = index
                 break
 
         if end_index is None:
-            raise ValueError("TRACE_END was not found.")
+            raise ValueError(
+                "TRACE_END was not found."
+            )
 
         return events[start_index:end_index + 1]
 
 
     def normalize_event(self, event: dict) -> dict:
         """
-        Convert a raw database event into a simpler
-        semantic representation.
+        Convert raw evidence into a semantic event.
         """
 
-        event_type = event["event_type"]
-        payload = event["payload"]
+        event_type = event.get("event_type")
+        payload = event.get("payload", {})
 
         normalized = {
-            "event_id": event["event_id"],
+            "event_id": event.get("event_id"),
             "event_type": event_type,
-            "source": event["source"],
-            "destination": event["destination"],
-            "timestamp": event["timestamp"],
+            "source": event.get("source"),
+            "destination": event.get("destination"),
+            "timestamp": event.get("timestamp"),
             "details": {},
         }
 
@@ -200,6 +235,7 @@ class ReconstructionEngine:
                 "content": payload.get("content"),
             }
 
+
         elif event_type == "LLM_REQUEST":
 
             normalized["details"] = {
@@ -207,6 +243,7 @@ class ReconstructionEngine:
                 "messages": payload.get("messages", []),
                 "tools": payload.get("tools", []),
             }
+
 
         elif event_type == "LLM_RESPONSE":
 
@@ -218,15 +255,17 @@ class ReconstructionEngine:
                 "tool_calls": message.get("tool_calls", []),
             }
 
+
         elif event_type == "TOOL_REQUEST":
 
             params = payload.get("params", {})
 
             normalized["details"] = {
                 "tool_name": params.get("name"),
-                "arguments": params.get("arguments", {}),
+                "arguments": params.get("arguments"),
                 "rpc_id": payload.get("id"),
             }
+
 
         elif event_type == "TOOL_RESPONSE":
 
@@ -238,8 +277,9 @@ class ReconstructionEngine:
                     "structuredContent",
                     result.get("content")
                 ),
-                "is_error": result.get("isError", False),
+                "is_error": result.get("isError"),
             }
+
 
         elif event_type == "FINAL_RESPONSE":
 
@@ -247,7 +287,11 @@ class ReconstructionEngine:
                 "content": payload.get("content")
             }
 
-        elif event_type not in ("TRACE_START", "TRACE_END"):
+
+        elif event_type not in (
+            "TRACE_START",
+            "TRACE_END",
+        ):
 
             normalized["details"] = {
                 "payload": payload
@@ -256,10 +300,10 @@ class ReconstructionEngine:
         return normalized
 
 
-    def normalize_execution(self, events: list[dict]) -> list[dict]:
-        """
-        Normalize every event in an execution.
-        """
+    def normalize_execution(
+        self,
+        events: list[dict]
+    ) -> list[dict]:
 
         return [
             self.normalize_event(event)
@@ -273,28 +317,29 @@ class ReconstructionEngine:
         start_index: int,
         event_type: str
     ) -> Optional[dict]:
-        """
-        Find the next event of a specific type.
-        """
 
-        for index in range(start_index + 1, len(events)):
+        for index in range(
+            start_index + 1,
+            len(events)
+        ):
 
-            if events[index]["event_type"] == event_type:
+            if events[index].get("event_type") == event_type:
                 return events[index]
 
         return None
 
 
-    def reconstruct_dependencies(self, events: list[dict]) -> list[dict]:
-        """
-        Reconstruct relationships between execution events.
-        """
+    def reconstruct_dependencies(
+        self,
+        events: list[dict]
+    ) -> list[dict]:
 
         dependencies = []
 
         for index, event in enumerate(events):
 
-            event_type = event["event_type"]
+            event_type = event.get("event_type")
+
 
             if event_type == "TRACE_START":
 
@@ -306,8 +351,8 @@ class ReconstructionEngine:
 
                 if target is not None:
                     dependencies.append({
-                        "from_event": event["event_id"],
-                        "to_event": target["event_id"],
+                        "from_event": event.get("event_id"),
+                        "to_event": target.get("event_id"),
                         "relationship": "execution_started",
                     })
 
@@ -322,8 +367,8 @@ class ReconstructionEngine:
 
                 if target is not None:
                     dependencies.append({
-                        "from_event": event["event_id"],
-                        "to_event": target["event_id"],
+                        "from_event": event.get("event_id"),
+                        "to_event": target.get("event_id"),
                         "relationship": "input_consumed_by",
                     })
 
@@ -338,45 +383,72 @@ class ReconstructionEngine:
 
                 if target is not None:
                     dependencies.append({
-                        "from_event": event["event_id"],
-                        "to_event": target["event_id"],
+                        "from_event": event.get("event_id"),
+                        "to_event": target.get("event_id"),
                         "relationship": "produced_response",
                     })
 
 
             elif event_type == "LLM_RESPONSE":
 
-                message = event["payload"].get("message", {})
+                payload = event.get("payload", {})
+                message = payload.get("message", {})
                 tool_calls = message.get("tool_calls", [])
 
                 if len(tool_calls) > 0:
 
                     for tool_call in tool_calls:
 
-                        function = tool_call.get("function", {})
+                        function = tool_call.get(
+                            "function",
+                            {}
+                        )
 
                         tool_name = function.get("name")
-                        arguments = function.get("arguments", {})
+                        arguments = function.get("arguments")
 
                         for candidate in events[index + 1:]:
 
-                            if candidate["event_type"] != "TOOL_REQUEST":
+                            if (
+                                candidate.get("event_type")
+                                != "TOOL_REQUEST"
+                            ):
                                 continue
 
-                            params = candidate["payload"].get(
+                            candidate_payload = candidate.get(
+                                "payload",
+                                {}
+                            )
+
+                            params = candidate_payload.get(
                                 "params",
                                 {}
                             )
 
+                            candidate_name = params.get("name")
+                            candidate_arguments = params.get(
+                                "arguments"
+                            )
+
                             if (
-                                params.get("name") == tool_name
+                                tool_name is not None
                                 and
-                                params.get("arguments", {}) == arguments
+                                candidate_name == tool_name
+                                and
+                                arguments is not None
+                                and
+                                candidate_arguments is not None
+                                and
+                                candidate_arguments == arguments
                             ):
 
                                 dependencies.append({
-                                    "from_event": event["event_id"],
-                                    "to_event": candidate["event_id"],
+                                    "from_event": event.get(
+                                        "event_id"
+                                    ),
+                                    "to_event": candidate.get(
+                                        "event_id"
+                                    ),
                                     "relationship": "requested_tool",
                                 })
 
@@ -392,28 +464,53 @@ class ReconstructionEngine:
 
                     if target is not None:
                         dependencies.append({
-                            "from_event": event["event_id"],
-                            "to_event": target["event_id"],
+                            "from_event": event.get(
+                                "event_id"
+                            ),
+                            "to_event": target.get(
+                                "event_id"
+                            ),
                             "relationship": "became_final_response",
                         })
 
 
             elif event_type == "TOOL_REQUEST":
 
-                request_id = event["payload"].get("id")
+                payload = event.get("payload", {})
+
+                request_id = payload.get("id")
+
+                if request_id is None:
+                    continue
 
                 for candidate in events[index + 1:]:
 
-                    if candidate["event_type"] != "TOOL_RESPONSE":
+                    if (
+                        candidate.get("event_type")
+                        != "TOOL_RESPONSE"
+                    ):
                         continue
 
-                    response_id = candidate["payload"].get("id")
+                    candidate_payload = candidate.get(
+                        "payload",
+                        {}
+                    )
 
-                    if request_id == response_id:
+                    response_id = candidate_payload.get("id")
+
+                    if (
+                        response_id is not None
+                        and
+                        request_id == response_id
+                    ):
 
                         dependencies.append({
-                            "from_event": event["event_id"],
-                            "to_event": candidate["event_id"],
+                            "from_event": event.get(
+                                "event_id"
+                            ),
+                            "to_event": candidate.get(
+                                "event_id"
+                            ),
                             "relationship": "produced_tool_result",
                         })
 
@@ -430,8 +527,8 @@ class ReconstructionEngine:
 
                 if target is not None:
                     dependencies.append({
-                        "from_event": event["event_id"],
-                        "to_event": target["event_id"],
+                        "from_event": event.get("event_id"),
+                        "to_event": target.get("event_id"),
                         "relationship": "tool_result_consumed_by",
                     })
 
@@ -446,31 +543,105 @@ class ReconstructionEngine:
 
                 if target is not None:
                     dependencies.append({
-                        "from_event": event["event_id"],
-                        "to_event": target["event_id"],
+                        "from_event": event.get("event_id"),
+                        "to_event": target.get("event_id"),
                         "relationship": "execution_completed",
                     })
 
         return dependencies
 
 
-    def reconstruct(self, trace_id: str) -> dict:
+    def save_reconstruction(
+        self,
+        reconstruction: dict,
+        filename: str
+    ) -> Path:
         """
-        Reconstruct a complete execution from the database.
+        Save reconstruction to:
+
+        data/reconstructions/<trace_id>/<filename>
         """
 
-        all_events = self.load_trace(trace_id)
+        trace_id = reconstruction.get("trace_id")
 
-        if len(all_events) == 0:
-            raise ValueError(
-                f"No events found for trace_id: {trace_id}"
+        if trace_id is None:
+            trace_id = "unknown_trace"
+
+        output_directory = (
+            self.project_root
+            / "data"
+            / "reconstructions"
+            / trace_id
+        )
+
+        output_directory.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        if not filename.endswith(".json"):
+            filename = f"{filename}.json"
+
+        output_path = (
+            output_directory
+            / filename
+        )
+
+        with open(
+            output_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                reconstruction,
+                file,
+                indent=4
             )
 
-        integrity = self.verify_integrity(all_events)
+        return output_path
 
-        execution_events = self.extract_execution(all_events)
 
-        timeline = self.normalize_execution(execution_events)
+    def reconstruct_from_events(
+        self,
+        events: list[dict],
+        trace_id: Optional[str] = None
+    ) -> dict:
+        """
+        Reconstruct from an in-memory event list.
+        """
+
+        if len(events) == 0:
+            return {
+                "trace_id": trace_id,
+                "success": False,
+                "failure_reason": "NO_EVENTS",
+                "timeline": [],
+                "dependencies": [],
+            }
+
+        if trace_id is None:
+            trace_id = events[0].get("trace_id")
+
+        try:
+
+            execution_events = self.extract_execution(
+                events
+            )
+
+        except ValueError as error:
+
+            return {
+                "trace_id": trace_id,
+                "success": False,
+                "failure_reason": str(error),
+                "timeline": [],
+                "dependencies": [],
+            }
+
+        timeline = self.normalize_execution(
+            execution_events
+        )
 
         dependencies = self.reconstruct_dependencies(
             execution_events
@@ -478,28 +649,153 @@ class ReconstructionEngine:
 
         return {
             "trace_id": trace_id,
-            "integrity": integrity,
-            "total_trace_events": len(all_events),
-            "execution_event_count": len(execution_events),
+            "success": True,
+            "execution_event_count": len(
+                execution_events
+            ),
             "timeline": timeline,
             "dependencies": dependencies,
         }
 
 
-    def print_timeline(self, reconstruction: dict) -> None:
+    def reconstruct_json(
+        self,
+        json_path: str | Path
+    ) -> dict:
         """
-        Print the reconstructed execution.
+        Reconstruct an ablated JSON file and save
+        the reconstructed result.
         """
+
+        json_path = Path(json_path)
+
+        events = self.load_json(
+            json_path
+        )
+
+        trace_id = None
+
+        if len(events) > 0:
+            trace_id = events[0].get("trace_id")
+
+        reconstruction = self.reconstruct_from_events(
+            events,
+            trace_id
+        )
+
+        output_path = self.save_reconstruction(
+            reconstruction,
+            json_path.name
+        )
+
+        reconstruction["saved_to"] = str(
+            output_path
+        )
+
+        return reconstruction
+
+
+    def reconstruct(
+        self,
+        trace_id: str
+    ) -> dict:
+        """
+        Reconstruct the original trusted trace from SQLite
+        and save the result.
+        """
+
+        all_events = self.load_trace(
+            trace_id
+        )
+
+        if len(all_events) == 0:
+            raise ValueError(
+                f"No events found for trace_id: {trace_id}"
+            )
+
+        integrity = self.verify_integrity(
+            all_events
+        )
+
+        execution_events = self.extract_execution(
+            all_events
+        )
+
+        timeline = self.normalize_execution(
+            execution_events
+        )
+
+        dependencies = self.reconstruct_dependencies(
+            execution_events
+        )
+
+        reconstruction = {
+            "trace_id": trace_id,
+            "success": True,
+            "integrity": integrity,
+            "total_trace_events": len(all_events),
+            "execution_event_count": len(
+                execution_events
+            ),
+            "timeline": timeline,
+            "dependencies": dependencies,
+        }
+
+        output_path = self.save_reconstruction(
+            reconstruction,
+            "database_full_evidence.json"
+        )
+
+        reconstruction["saved_to"] = str(
+            output_path
+        )
+
+        return reconstruction
+
+
+    def print_timeline(
+        self,
+        reconstruction: dict
+    ) -> None:
 
         print("\n================================")
         print("RECONSTRUCTED EXECUTION")
         print("================================")
 
-        print(f"\nTrace ID: {reconstruction['trace_id']}")
         print(
-            "Integrity Valid:",
-            reconstruction["integrity"]["valid"]
+            f"\nTrace ID: "
+            f"{reconstruction.get('trace_id')}"
         )
+
+        print(
+            "Success:",
+            reconstruction.get("success", True)
+        )
+
+        if "integrity" in reconstruction:
+            print(
+                "Integrity Valid:",
+                reconstruction["integrity"]["valid"]
+            )
+        else:
+            print(
+                "Integrity Valid: "
+                "Not checked (ablated evidence)"
+            )
+
+        if not reconstruction.get(
+            "success",
+            True
+        ):
+
+            print(
+                "Failure:",
+                reconstruction.get(
+                    "failure_reason"
+                )
+            )
+
+            return
 
         print("\n--------------------------------")
         print("TIMELINE")
@@ -508,17 +804,19 @@ class ReconstructionEngine:
         for event in reconstruction["timeline"]:
 
             print(
-                f"\n[{event['event_id']}] "
-                f"{event['event_type']}"
+                f"\n[{event.get('event_id')}] "
+                f"{event.get('event_type')}"
             )
 
             print(
-                f"    {event['source']} "
-                f"-> {event['destination']}"
+                f"    {event.get('source')} "
+                f"-> {event.get('destination')}"
             )
 
             if event["details"]:
+
                 print("    Details:")
+
                 print(
                     json.dumps(
                         event["details"],
@@ -539,12 +837,15 @@ class ReconstructionEngine:
                 f"E{dependency['to_event']}"
             )
 
+        if reconstruction.get("saved_to"):
+
+            print(
+                f"\nSaved reconstruction: "
+                f"{reconstruction['saved_to']}"
+            )
+
 
     def close(self) -> None:
-        """
-        Close the database connection.
-        """
-
         self.db.close()
 
 
@@ -552,18 +853,47 @@ def main():
 
     engine = ReconstructionEngine()
 
-    trace_id = input(
-        "Enter trace_id: "
+    print("\n1. Reconstruct from SQLite")
+    print("2. Reconstruct ablated JSON")
+
+    choice = input(
+        "\nSelect mode: "
     ).strip()
 
     try:
 
-        reconstruction = engine.reconstruct(trace_id)
+        if choice == "1":
 
-        engine.print_timeline(reconstruction)
+            trace_id = input(
+                "Enter trace_id: "
+            ).strip()
+
+            reconstruction = engine.reconstruct(
+                trace_id
+            )
+
+
+        elif choice == "2":
+
+            json_path = input(
+                "Enter JSON path: "
+            ).strip()
+
+            reconstruction = engine.reconstruct_json(
+                json_path
+            )
+
+
+        else:
+
+            print("Invalid choice.")
+            return
+
+        engine.print_timeline(
+            reconstruction
+        )
 
     finally:
-
         engine.close()
 
 
