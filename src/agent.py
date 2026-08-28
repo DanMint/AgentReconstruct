@@ -1,15 +1,20 @@
+"""
+This python file creates a langchain agent. The traffic from agent host is sent to the LLM gateway.
+The tools are passed by the main function which does a call to the MCP server to discover all of the tools that are there.
+
+The agent also records agent host events. All of the invokations are passed through the LLM gateway. 
+
+The recording records the following:
+    1. Trace starting
+"""
 from langchain.agents import create_agent
 from langchain_ollama import ChatOllama
-
 import uuid
 import httpx
 
-
 RECORDER_URL = "http://127.0.0.1:9100"
 
-
 class Agent:
-
     def __init__(
         self,
         tools=None,
@@ -55,14 +60,7 @@ class Agent:
         )
 
     # record Host-Level Event
-    async def _record_host_event(
-        self,
-        event_type: str,
-        source: str,
-        destination: str,
-        payload: dict
-    ) -> None:
-
+    async def _record_host_event(self, event_type: str, source: str, destination: str, payload: dict) -> None:
         """
         Send an event observed at the Agent Host
         to the trusted Event Recorder.
@@ -70,11 +68,7 @@ class Agent:
         source/destination describe the actual
         execution event, not the logging connection.
         """
-
-        async with httpx.AsyncClient(
-            timeout=30
-        ) as client:
-
+        async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{RECORDER_URL}/api/events",
 
@@ -91,18 +85,8 @@ class Agent:
             response.raise_for_status()
 
     # invoke Agent
-    async def invoke(
-        self,
-        role: str = "user",
-        messages: str = ""
-    ) -> dict:
-        # ----------------------------------------------------
+    async def invoke(self, role: str = "user", messages: str = "") -> dict:
         # TRACE_START
-        #
-        # Lifecycle marker indicating that the Agent Host
-        # has begun processing this execution
-        # ----------------------------------------------------
-
         await self._record_host_event(
             event_type="TRACE_START",
             source="agent_host",
@@ -110,15 +94,7 @@ class Agent:
             payload={}
         )
 
-
-        # ----------------------------------------------------
         # USER_INPUT
-        #
-        # Actual communication:
-        #
-        # User -> Agent Host
-        # ----------------------------------------------------
-
         await self._record_host_event(
             event_type="USER_INPUT",
             source="user",
@@ -129,22 +105,6 @@ class Agent:
             }
         )
 
-        # ----------------------------------------------------
-        # Execute Agent
-        #
-        # The LangChain agent can now:
-        #
-        # Agent Host
-        #     -> LLM Gateway
-        #     -> Ollama
-        #
-        # and:
-        #
-        # Agent Host
-        #     -> MCP Gateway
-        #     -> MCP Server
-        #     -> Tool
-        # ----------------------------------------------------
         result = await self.agent.ainvoke(
             {
                 "messages": [
@@ -161,14 +121,7 @@ class Agent:
 
         final_content = final_message.content
 
-        # ----------------------------------------------------
         # FINAL_RESPONSE
-        #
-        # Actual communication:
-        #
-        # Agent Host -> User
-        # ----------------------------------------------------
-
         await self._record_host_event(
             event_type="FINAL_RESPONSE",
             source="agent_host",
@@ -178,12 +131,7 @@ class Agent:
             }
         )
 
-        # ----------------------------------------------------
         # TRACE_END
-        #
-        # Lifecycle marker indicating that execution
-        # has completed.
-        # ----------------------------------------------------
         await self._record_host_event(
             event_type="TRACE_END",
             source="agent_host",

@@ -6,31 +6,20 @@ import json
 class Metrics:
 
     def __init__(self):
-
         self.project_root = Path(__file__).resolve().parent.parent
 
 
     def load_json(self, path: str | Path) -> dict:
-
         path = Path(path)
 
         if not path.exists():
-            raise FileNotFoundError(
-                f"JSON file not found: {path}"
-            )
+            raise FileNotFoundError(f"JSON file not found: {path}")
 
-        with open(
-            path,
-            "r",
-            encoding="utf-8"
-        ) as file:
+        with open(path, "r", encoding="utf-8") as file:
             return json.load(file)
 
 
-    def normalize_ground_truth_event(
-        self,
-        event: dict
-    ) -> dict:
+    def normalize_ground_truth_event(self, event: dict) -> dict:
         """
         Convert a raw ground-truth event into the same
         semantic format used by ReconstructionEngine.
@@ -49,7 +38,6 @@ class Metrics:
         }
 
         if event_type == "USER_INPUT":
-
             normalized["details"] = {
                 "role": payload.get("role"),
                 "content": payload.get("content"),
@@ -57,7 +45,6 @@ class Metrics:
 
 
         elif event_type == "LLM_REQUEST":
-
             normalized["details"] = {
                 "model": payload.get("model"),
                 "messages": payload.get("messages", []),
@@ -66,9 +53,7 @@ class Metrics:
 
 
         elif event_type == "LLM_RESPONSE":
-
             message = payload.get("message", {})
-
             normalized["details"] = {
                 "model": payload.get("model"),
                 "content": message.get("content"),
@@ -77,9 +62,7 @@ class Metrics:
 
 
         elif event_type == "TOOL_REQUEST":
-
             params = payload.get("params", {})
-
             normalized["details"] = {
                 "tool_name": params.get("name"),
                 "arguments": params.get("arguments"),
@@ -88,9 +71,7 @@ class Metrics:
 
 
         elif event_type == "TOOL_RESPONSE":
-
             result = payload.get("result", {})
-
             normalized["details"] = {
                 "rpc_id": payload.get("id"),
                 "result": result.get(
@@ -102,17 +83,12 @@ class Metrics:
 
 
         elif event_type == "FINAL_RESPONSE":
-
             normalized["details"] = {
                 "content": payload.get("content")
             }
 
 
-        elif event_type not in (
-            "TRACE_START",
-            "TRACE_END",
-        ):
-
+        elif event_type not in ("TRACE_START", "TRACE_END"):
             normalized["details"] = {
                 "payload": payload
             }
@@ -120,50 +96,32 @@ class Metrics:
         return normalized
 
 
-    def normalize_ground_truth(
-        self,
-        ground_truth: dict
-    ) -> list[dict]:
-
+    def normalize_ground_truth(self, ground_truth: dict) -> list[dict]:
         return [
             self.normalize_ground_truth_event(event)
             for event in ground_truth["events"]
         ]
 
 
-    def get_event_map(
-        self,
-        events: list[dict]
-    ) -> dict:
+    def get_event_map(self, events: list[dict]) -> dict:
 
         event_map = {}
-
         for event in events:
-
             event_id = event.get("event_id")
-
             if event_id is not None:
                 event_map[event_id] = event
 
         return event_map
 
 
-    def event_completeness(
-        self,
-        ground_truth_events: list[dict],
-        reconstructed_events: list[dict]
-    ) -> dict:
+    def event_completeness(self, ground_truth_events: list[dict], reconstructed_events: list[dict]) -> dict:
         """
         Measure how many expected events were recovered.
         """
 
-        ground_truth_map = self.get_event_map(
-            ground_truth_events
-        )
+        ground_truth_map = self.get_event_map(ground_truth_events)
 
-        reconstruction_map = self.get_event_map(
-            reconstructed_events
-        )
+        reconstruction_map = self.get_event_map(reconstructed_events)
 
         recovered = []
         missing = []
@@ -177,10 +135,7 @@ class Metrics:
                 missing.append(event_id)
                 continue
 
-            if (
-                actual.get("event_type")
-                != expected.get("event_type")
-            ):
+            if (actual.get("event_type") != expected.get("event_type")):
                 wrong_type.append(event_id)
                 continue
 
@@ -202,11 +157,7 @@ class Metrics:
         }
 
 
-    def ordering_fidelity(
-        self,
-        ground_truth_events: list[dict],
-        reconstructed_events: list[dict]
-    ) -> dict:
+    def ordering_fidelity(self, ground_truth_events: list[dict], reconstructed_events: list[dict]) -> dict:
         """
         Compare relative ordering of events that exist
         in both executions.
@@ -242,22 +193,14 @@ class Metrics:
         total_pairs = 0
 
         for first_index in range(len(common_events)):
-
-            for second_index in range(
-                first_index + 1,
-                len(common_events)
-            ):
+            for second_index in range(first_index + 1, len(common_events)):
 
                 first_event = common_events[first_index]
                 second_event = common_events[second_index]
 
                 total_pairs += 1
 
-                if (
-                    reconstructed_position[first_event]
-                    <
-                    reconstructed_position[second_event]
-                ):
+                if (reconstructed_position[first_event] < reconstructed_position[second_event]):
                     correct_pairs += 1
 
         if total_pairs == 0:
@@ -272,11 +215,7 @@ class Metrics:
         }
 
 
-    def dependency_fidelity(
-        self,
-        ground_truth_dependencies: list[dict],
-        reconstructed_dependencies: list[dict]
-    ) -> dict:
+    def dependency_fidelity(self, ground_truth_dependencies: list[dict], reconstructed_dependencies: list[dict]) -> dict:
         """
         Measure dependency precision, recall and F1.
         """
@@ -357,11 +296,7 @@ class Metrics:
         }
 
 
-    def payload_event_fidelity(
-        self,
-        ground_truth_events: list[dict],
-        reconstructed_events: list[dict]
-    ) -> dict:
+    def payload_event_fidelity(self, ground_truth_events: list[dict], reconstructed_events: list[dict]) -> dict:
         """
         Measure how many reconstructed events have
         exactly the correct semantic content.
@@ -380,7 +315,6 @@ class Metrics:
         mismatched = []
 
         for event_id, expected in ground_truth_map.items():
-
             expected_details = expected.get(
                 "details",
                 {}
@@ -390,11 +324,9 @@ class Metrics:
                 continue
 
             compared += 1
-
             actual = reconstruction_map.get(event_id)
 
             if actual is None:
-
                 mismatched.append({
                     "event_id": event_id,
                     "reason": "EVENT_MISSING",
@@ -433,11 +365,7 @@ class Metrics:
         }
 
 
-    def flatten(
-        self,
-        value: Any,
-        prefix: str = ""
-    ) -> dict:
+    def flatten(self, value: Any, prefix: str = "") -> dict:
         """
         Convert nested dictionaries and lists into
         individual field paths.
@@ -446,9 +374,7 @@ class Metrics:
         flattened = {}
 
         if isinstance(value, dict):
-
             for key, item in value.items():
-
                 path = (
                     f"{prefix}.{key}"
                     if prefix
@@ -464,9 +390,7 @@ class Metrics:
 
 
         elif isinstance(value, list):
-
             for index, item in enumerate(value):
-
                 path = f"{prefix}[{index}]"
 
                 flattened.update(
@@ -478,23 +402,15 @@ class Metrics:
 
 
         else:
-
             flattened[prefix] = value
 
         return flattened
 
-
-    def payload_field_fidelity(
-        self,
-        ground_truth_events: list[dict],
-        reconstructed_events: list[dict]
-    ) -> dict:
+    def payload_field_fidelity(self, ground_truth_events: list[dict], reconstructed_events: list[dict]) -> dict:
         """
         Compare individual semantic payload fields.
-
         This is less strict than payload_event_fidelity.
         """
-
         ground_truth_map = self.get_event_map(
             ground_truth_events
         )
@@ -510,12 +426,8 @@ class Metrics:
         sentinel = object()
 
         for event_id, expected in ground_truth_map.items():
-
             expected_details = self.flatten(
-                expected.get(
-                    "details",
-                    {}
-                )
+                expected.get("details", {})
             )
 
             if len(expected_details) == 0:
@@ -524,9 +436,7 @@ class Metrics:
             actual = reconstruction_map.get(event_id)
 
             if actual is None:
-
                 for path in expected_details:
-
                     expected_fields += 1
 
                     missing_fields.append({
@@ -545,19 +455,13 @@ class Metrics:
             )
 
             for path, expected_value in expected_details.items():
-
                 expected_fields += 1
-
                 actual_value = actual_details.get(
                     path,
                     sentinel
                 )
 
-                if (
-                    actual_value is not sentinel
-                    and
-                    actual_value == expected_value
-                ):
+                if (actual_value is not sentinel and actual_value == expected_value):
                     correct_fields += 1
 
                 else:
@@ -585,25 +489,16 @@ class Metrics:
         }
 
 
-    def metadata_fidelity(
-        self,
-        ground_truth_events: list[dict],
-        reconstructed_events: list[dict]
-    ) -> dict:
+    def metadata_fidelity(self, ground_truth_events: list[dict], reconstructed_events: list[dict]) -> dict:
         """
         Compare source, destination and timestamp.
-
         This is reported separately because these fields
         may not be required for semantic reconstruction.
         """
 
-        ground_truth_map = self.get_event_map(
-            ground_truth_events
-        )
+        ground_truth_map = self.get_event_map(ground_truth_events)
 
-        reconstruction_map = self.get_event_map(
-            reconstructed_events
-        )
+        reconstruction_map = self.get_event_map(reconstructed_events)
 
         fields = [
             "source",
@@ -616,13 +511,10 @@ class Metrics:
         mismatches = []
 
         for event_id, expected in ground_truth_map.items():
-
             actual = reconstruction_map.get(event_id)
-
             for field in fields:
 
                 total += 1
-
                 expected_value = expected.get(field)
 
                 if actual is None:
@@ -654,20 +546,14 @@ class Metrics:
         }
 
 
-    def compare(
-        self,
-        ground_truth: dict,
-        reconstruction: dict
-    ) -> dict:
+    def compare(self, ground_truth: dict, reconstruction: dict) -> dict:
         """
         Compare one reconstructed execution against
         the canonical ground truth.
         """
 
         ground_truth_events = (
-            self.normalize_ground_truth(
-                ground_truth
-            )
+            self.normalize_ground_truth(ground_truth)
         )
 
         reconstructed_events = reconstruction.get(
@@ -739,12 +625,7 @@ class Metrics:
         )
 
 
-        exact_trace_success = (
-            semantic_success
-            and
-            metadata["score"] == 1.0
-        )
-
+        exact_trace_success = (semantic_success and metadata["score"] == 1.0)
 
         return {
             "trace_id": ground_truth.get("trace_id"),
@@ -775,11 +656,7 @@ class Metrics:
         }
 
 
-    def save_results(
-        self,
-        results: dict,
-        reconstruction_path: str | Path
-    ) -> Path:
+    def save_results(self, results: dict, reconstruction_path: str | Path) -> Path:
 
         reconstruction_path = Path(
             reconstruction_path
@@ -807,12 +684,7 @@ class Metrics:
             / reconstruction_path.name
         )
 
-        with open(
-            output_path,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
+        with open(output_path, "w", encoding="utf-8") as file:
             json.dump(
                 results,
                 file,
@@ -822,10 +694,7 @@ class Metrics:
         return output_path
 
 
-    def print_results(
-        self,
-        results: dict
-    ) -> None:
+    def print_results(self, results: dict) -> None:
 
         print("\n================================")
         print("RECONSTRUCTION METRICS")
@@ -900,18 +769,12 @@ def main():
 
     metrics = Metrics()
 
-    trace_id = input(
-        "Enter trace_id: "
-    ).strip()
+    trace_id = input("Enter trace_id: ").strip()
 
-    reconstruction_name = input(
-        "Enter reconstruction file name: "
-    ).strip()
+    reconstruction_name = input("Enter reconstruction file name: ").strip()
 
     if not reconstruction_name.endswith(".json"):
-        reconstruction_name = (
-            f"{reconstruction_name}.json"
-        )
+        reconstruction_name = (f"{reconstruction_name}.json")
 
     ground_truth_path = (
         metrics.project_root
@@ -954,7 +817,6 @@ def main():
         f"\nMetrics saved to: "
         f"{output_path}"
     )
-
 
 if __name__ == "__main__":
     main()

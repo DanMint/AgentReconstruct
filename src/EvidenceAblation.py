@@ -6,24 +6,11 @@ import json
 
 class EvidenceAblation:
 
+    # create a copy of the events so that ground truth is not modified
     def copy_events(self, events: list[dict]) -> list[dict]:
-        """
-        Create a copy of the events so the original
-        ground truth is never modified.
-        """
-
         return deepcopy(events)
 
-
-    def remove_event_types(
-        self,
-        events: list[dict],
-        event_types: list[str]
-    ) -> list[dict]:
-        """
-        Remove complete event types.
-        """
-
+    def remove_event_types(self, events: list[dict], event_types: list[str]) -> list[dict]:
         ablated = self.copy_events(events)
 
         return [
@@ -32,33 +19,19 @@ class EvidenceAblation:
             if event.get("event_type") not in event_types
         ]
 
-
-    def remove_fields(
-        self,
-        events: list[dict],
-        fields: list[str]
-    ) -> list[dict]:
-        """
-        Remove top-level event fields.
-        """
-
+    # remove top level events
+    def remove_fields(self, events: list[dict], fields: list[str]) -> list[dict]:
         ablated = self.copy_events(events)
 
         for event in ablated:
-
             for field in fields:
-
                 if field in event:
                     del event[field]
 
         return ablated
 
-
-    def remove_payloads(
-        self,
-        events: list[dict],
-        event_types: list[str] | None = None
-    ) -> list[dict]:
+    # remove payload contents from selected events
+    def remove_payloads(self, events: list[dict], event_types: list[str] | None = None) -> list[dict]:
         """
         Remove payload contents from selected events.
         """
@@ -77,10 +50,7 @@ class EvidenceAblation:
         return ablated
 
 
-    def remove_rpc_ids(
-        self,
-        events: list[dict]
-    ) -> list[dict]:
+    def remove_rpc_ids(self, events: list[dict]) -> list[dict]:
         """
         Remove JSON-RPC IDs used to pair requests
         and responses.
@@ -104,10 +74,7 @@ class EvidenceAblation:
         return ablated
 
 
-    def remove_tool_arguments(
-        self,
-        events: list[dict]
-    ) -> list[dict]:
+    def remove_tool_arguments(self, events: list[dict]) -> list[dict]:
         """
         Remove tool arguments from LLM tool calls
         and TOOL_REQUEST events.
@@ -116,17 +83,14 @@ class EvidenceAblation:
         ablated = self.copy_events(events)
 
         for event in ablated:
-
             event_type = event.get("event_type")
 
             if event_type == "LLM_RESPONSE":
-
                 payload = event.get("payload", {})
                 message = payload.get("message", {})
                 tool_calls = message.get("tool_calls", [])
 
                 for tool_call in tool_calls:
-
                     function = tool_call.get(
                         "function",
                         {}
@@ -134,7 +98,6 @@ class EvidenceAblation:
 
                     if "arguments" in function:
                         del function["arguments"]
-
 
             elif event_type == "TOOL_REQUEST":
 
@@ -147,10 +110,7 @@ class EvidenceAblation:
         return ablated
 
 
-    def remove_tool_results(
-        self,
-        events: list[dict]
-    ) -> list[dict]:
+    def remove_tool_results(self, events: list[dict]) -> list[dict]:
         """
         Keep TOOL_RESPONSE events but remove
         the returned tool result.
@@ -159,7 +119,6 @@ class EvidenceAblation:
         ablated = self.copy_events(events)
 
         for event in ablated:
-
             if event.get("event_type") != "TOOL_RESPONSE":
                 continue
 
@@ -175,10 +134,7 @@ class EvidenceAblation:
         return ablated
 
 
-    def remove_llm_contents(
-        self,
-        events: list[dict]
-    ) -> list[dict]:
+    def remove_llm_contents(self, events: list[dict]) -> list[dict]:
         """
         Remove textual content from LLM responses.
         """
@@ -199,28 +155,19 @@ class EvidenceAblation:
         return ablated
 
 
-    def shuffle_events(
-        self,
-        events: list[dict],
-        seed: int = 42
-    ) -> list[dict]:
+    def shuffle_events(self, events: list[dict], seed: int = 42) -> list[dict]:
         """
         Randomize event ordering.
         """
 
         ablated = self.copy_events(events)
-
         random_generator = random.Random(seed)
-
         random_generator.shuffle(ablated)
 
         return ablated
 
 
-    def create_default_ablations(
-        self,
-        events: list[dict]
-    ) -> dict[str, list[dict]]:
+    def create_default_ablations(self, events: list[dict]) -> dict[str, list[dict]]:
         """
         Create the initial evidence-ablation experiments.
         """
@@ -284,12 +231,7 @@ class EvidenceAblation:
         }
 
 
-    def save_ablation(
-        self,
-        trace_id: str,
-        experiment_name: str,
-        events: list[dict]
-    ) -> Path:
+    def save_ablation(self, trace_id: str, experiment_name: str, events: list[dict]) -> Path:
         """
         Save an ablated execution to JSON.
         """
@@ -313,11 +255,7 @@ class EvidenceAblation:
             / f"{experiment_name}.json"
         )
 
-        with open(
-            output_path,
-            "w",
-            encoding="utf-8"
-        ) as file:
+        with open(output_path, "w", encoding="utf-8") as file:
 
             json.dump(
                 events,
@@ -332,9 +270,7 @@ def main():
 
     project_root = Path(__file__).resolve().parent.parent
 
-    trace_id = input(
-        "Enter trace_id: "
-    ).strip()
+    trace_id = input("Enter trace_id: ").strip()
 
     ground_truth_path = (
         project_root
@@ -357,33 +293,20 @@ def main():
 
 
     # Load ground truth
-    with open(
-        ground_truth_path,
-        "r",
-        encoding="utf-8"
-    ) as file:
-
+    with open(ground_truth_path, "r", encoding="utf-8") as file:
         ground_truth = json.load(file)
 
 
     events = ground_truth["events"]
 
-    print(
-        f"\nGround truth loaded."
-    )
+    print(f"\nGround truth loaded.")
 
-    print(
-        f"Events: {len(events)}"
-    )
-
+    print(f"Events: {len(events)}")
 
     # Create ablation experiments
     ablator = EvidenceAblation()
 
-    experiments = ablator.create_default_ablations(
-        events
-    )
-
+    experiments = ablator.create_default_ablations(events)
 
     print(
         f"\nCreating "
@@ -393,16 +316,9 @@ def main():
 
     # Save every experiment
     for experiment_name, ablated_events in experiments.items():
+        output_path = ablator.save_ablation(trace_id, experiment_name, ablated_events)
 
-        output_path = ablator.save_ablation(
-            trace_id,
-            experiment_name,
-            ablated_events
-        )
-
-        print(
-            f"{experiment_name}"
-        )
+        print(f"{experiment_name}")
 
         print(
             f"    Events: "
@@ -414,10 +330,7 @@ def main():
             f"{output_path}"
         )
 
-
-    print(
-        "\nEvidence ablation complete."
-    )
+    print("\nEvidence ablation complete.")
 
 
 if __name__ == "__main__":

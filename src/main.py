@@ -8,11 +8,7 @@ import uuid
 from agent import Agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-
-# ============================================================
 # Ports
-# ============================================================
-
 RECORDER_HOST = "127.0.0.1"
 RECORDER_PORT = 9100
 
@@ -34,22 +30,15 @@ def wait_for_server(host: str, port: int, timeout: int = 10):
     """
 
     start_time = time.time()
-
     while time.time() - start_time < timeout:
-
         try:
-            with socket.create_connection(
-                (host, port),
-                timeout=1,
-            ):
+            with socket.create_connection((host, port),timeout=1):
                 return
 
         except OSError:
             time.sleep(0.2)
 
-    raise RuntimeError(
-        f"Server {host}:{port} did not start."
-    )
+    raise RuntimeError(f"Server {host}:{port} did not start.")
 
 
 def start_uvicorn(module: str, host: str, port: int):
@@ -66,19 +55,13 @@ def start_uvicorn(module: str, host: str, port: int):
         ]
     )
 
-    wait_for_server(
-        host,
-        port,
-    )
+    wait_for_server(host, port)
 
     return process
 
 async def run_agent():
 
-    # --------------------------------------------------------
     # One trace ID for the entire agent execution
-    # --------------------------------------------------------
-
     trace_id = str(uuid.uuid4())
 
     print(f"\n[MAIN] Trace ID: {trace_id}")
@@ -119,22 +102,15 @@ async def run_agent():
     print("\n[MAIN] MCP Tools Loaded:")
 
     for tool in tools:
-        print(
-            f" KAZA  - {tool.name}"
-        )
+        print(f" KAZA  - {tool.name}")
 
-
-    # --------------------------------------------------------
     # Verify add exists
-    # --------------------------------------------------------
-
     tool_names = [
         tool.name
         for tool in tools
     ]
 
     if "add" not in tool_names:
-
         raise RuntimeError(
             "MCP tool 'add' was not discovered."
         )
@@ -142,11 +118,8 @@ async def run_agent():
 
     # Create Agent Host
     agent = Agent(
-
         tools=tools,
-
         trace_id=trace_id,
-
         agent_prompt=(
             "You are a helpful assistant. "
             "When asked to perform arithmetic, "
@@ -155,9 +128,7 @@ async def run_agent():
     )
 
     # Invoke agent
-    print(
-        "\n[MAIN] Asking agent to use add tool..."
-    )
+    print("\n[MAIN] Asking agent to use add tool...")
 
     result = await agent.invoke(
         messages=(
@@ -184,14 +155,9 @@ def main():
         print("[MAIN] Checking Ollama...")
 
         try:
-            wait_for_server(
-                OLLAMA_HOST,
-                OLLAMA_PORT,
-                timeout=2,
-            )
+            wait_for_server(OLLAMA_HOST, OLLAMA_PORT, timeout=2)
 
         except RuntimeError:
-
             print(
                 "[ERROR] Ollama is not running.\n"
                 "Start it using:\n"
@@ -205,44 +171,28 @@ def main():
         # start recorder
         print("\n[MAIN] Starting Event Recorder...")
 
-        recorder_process = start_uvicorn(
-            "src.EventRecorder:app",
-            RECORDER_HOST,
-            RECORDER_PORT,
-        )
+        recorder_process = start_uvicorn("src.EventRecorder:app", RECORDER_HOST, RECORDER_PORT)
 
         print("[MAIN] Event Recorder ready.")
 
         # Start MCP Tool Server
         print("\n[MAIN] Starting MCP Tool Server...")
 
-        mcp_server_process = start_uvicorn(
-            "src.tools.toolServer:app",
-            MCP_SERVER_HOST,
-            MCP_SERVER_PORT,
-        )
+        mcp_server_process = start_uvicorn("src.tools.toolServer:app", MCP_SERVER_HOST, MCP_SERVER_PORT)
 
         print("[MAIN] MCP Tool Server ready.")
 
         # Start MCP Gateway
         print("\n[MAIN] Starting MCP Gateway...")
 
-        mcp_gateway_process = start_uvicorn(
-            "src.McpGateway:app",
-            MCP_GATEWAY_HOST,
-            MCP_GATEWAY_PORT,
-        )
+        mcp_gateway_process = start_uvicorn("src.McpGateway:app", MCP_GATEWAY_HOST, MCP_GATEWAY_PORT)
 
         print("[MAIN] MCP Gateway ready.")
 
         # Start LLM Gateway
         print("\n[MAIN] Starting LLM Gateway...")
 
-        llm_gateway_process = start_uvicorn(
-            "src.LlmGateway:app",
-            LLM_GATEWAY_HOST,
-            LLM_GATEWAY_PORT,
-        )
+        llm_gateway_process = start_uvicorn("src.LlmGateway:app", LLM_GATEWAY_HOST, LLM_GATEWAY_PORT)
 
         print("[MAIN] LLM Gateway ready.")
 
@@ -275,7 +225,6 @@ def main():
 
                 except subprocess.TimeoutExpired:
                     process.kill()
-
 
         print("[MAIN] AgentTrace stopped.")
 
